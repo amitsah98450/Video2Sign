@@ -1,0 +1,18 @@
+.app-header .btn-icon {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0.5rem;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+}
+
+.app-header .btn-icon:hover {
+  color: var(--accent-primary);
+  background: rgba(0, 217, 255, 0.1);
+}
