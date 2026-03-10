@@ -31,7 +31,7 @@ class TPS:
             self.theta = noise + torch.eye(2, 3).view(1, 2, 3)
             self.control_points = make_coordinate_grid(
                 (kwargs['points_tps'], kwargs['points_tps']),
-                type=noise.type()
+                dtype=noise.dtype, device=noise.device
             )
             self.control_points = self.control_points.unsqueeze(0)
             self.control_params = torch.normal(
@@ -45,7 +45,7 @@ class TPS:
             kp_1 = kwargs["kp_1"]
             kp_2 = kwargs["kp_2"]
             device = kp_1.device
-            kp_type = kp_1.type()
+            kp_dtype = kp_1.dtype
             self.gs = kp_1.shape[1]
             n = kp_1.shape[2]
 
@@ -57,24 +57,27 @@ class TPS:
             K = K * torch.log(K + 1e-9)
 
             one1 = torch.ones(
-                self.bs, kp_1.shape[1], kp_1.shape[2], 1
-            ).to(device).type(kp_type)
+                self.bs, kp_1.shape[1], kp_1.shape[2], 1,
+                dtype=kp_dtype, device=device
+            )
             kp_1p = torch.cat([kp_1, one1], 3)
 
             zero = torch.zeros(
-                self.bs, kp_1.shape[1], 3, 3
-            ).to(device).type(kp_type)
+                self.bs, kp_1.shape[1], 3, 3,
+                dtype=kp_dtype, device=device
+            )
             P = torch.cat([kp_1p, zero], 2)
             L = torch.cat([K, kp_1p.permute(0, 1, 3, 2)], 2)
             L = torch.cat([L, P], 3)
 
             zero = torch.zeros(
-                self.bs, kp_1.shape[1], 3, 2
-            ).to(device).type(kp_type)
+                self.bs, kp_1.shape[1], 3, 2,
+                dtype=kp_dtype, device=device
+            )
             Y = torch.cat([kp_2, zero], 2)
-            one = torch.eye(L.shape[2]).expand(L.shape).to(device).type(
-                kp_type
-            ) * 0.01
+            one = torch.eye(
+                L.shape[2], dtype=kp_dtype, device=device
+            ).expand(L.shape) * 0.01
             L = L + one
 
             param = torch.matmul(torch.inverse(L), Y)
@@ -87,8 +90,8 @@ class TPS:
 
     def transform_frame(self, frame):
         grid = make_coordinate_grid(
-            frame.shape[2:], type=frame.type()
-        ).unsqueeze(0).to(frame.device)
+            frame.shape[2:], dtype=frame.dtype, device=frame.device
+        ).unsqueeze(0)
         grid = grid.view(1, frame.shape[2] * frame.shape[3], 2)
         shape = [self.bs, frame.shape[2], frame.shape[3], 2]
         if self.mode == 'kp':
@@ -97,13 +100,15 @@ class TPS:
         return grid
 
     def warp_coordinates(self, coordinates):
-        theta = self.theta.type(coordinates.type()).to(coordinates.device)
-        control_points = self.control_points.type(
-            coordinates.type()
-        ).to(coordinates.device)
-        control_params = self.control_params.type(
-            coordinates.type()
-        ).to(coordinates.device)
+        theta = self.theta.to(
+            dtype=coordinates.dtype, device=coordinates.device
+        )
+        control_points = self.control_points.to(
+            dtype=coordinates.dtype, device=coordinates.device
+        )
+        control_params = self.control_params.to(
+            dtype=coordinates.dtype, device=coordinates.device
+        )
 
         if self.mode == 'kp':
             transformed = torch.matmul(
@@ -149,8 +154,8 @@ class TPS:
 def kp2gaussian(kp, spatial_size, kp_variance):
     """Transform a keypoint into gaussian-like representation."""
     coordinate_grid = make_coordinate_grid(
-        spatial_size, kp.type()
-    ).to(kp.device)
+        spatial_size, dtype=kp.dtype, device=kp.device
+    )
     number_of_leading_dimensions = len(kp.shape) - 1
     shape = (1,) * number_of_leading_dimensions + coordinate_grid.shape
     coordinate_grid = coordinate_grid.view(*shape)
@@ -164,11 +169,14 @@ def kp2gaussian(kp, spatial_size, kp_variance):
     return out
 
 
-def make_coordinate_grid(spatial_size, type):
+def make_coordinate_grid(spatial_size, dtype=torch.float32, device='cpu',
+                         type=None):
     """Create a meshgrid [-1, 1] x [-1, 1] of given spatial_size."""
+    # Backward compatibility: if 'type' is passed as a string, ignore it
+    # and use dtype/device instead (needed for MPS compatibility)
     h, w = spatial_size
-    x = torch.arange(w).type(type)
-    y = torch.arange(h).type(type)
+    x = torch.arange(w, dtype=dtype, device=device)
+    y = torch.arange(h, dtype=dtype, device=device)
 
     x = (2 * (x / (w - 1)) - 1)
     y = (2 * (y / (h - 1)) - 1)
@@ -184,7 +192,9 @@ def to_homogeneous(coordinates):
     """Convert 2D coordinates to homogeneous (append 1)."""
     ones_shape = list(coordinates.shape)
     ones_shape[-1] = 1
-    ones = torch.ones(ones_shape).type(coordinates.type())
+    ones = torch.ones(
+        ones_shape, dtype=coordinates.dtype, device=coordinates.device
+    )
     return torch.cat([coordinates, ones], dim=-1)
 
 

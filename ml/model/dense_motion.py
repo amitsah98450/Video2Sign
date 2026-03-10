@@ -115,8 +115,9 @@ class DenseMotionNetwork(nn.Module):
         heatmap = gaussian_driving - gaussian_source
 
         zeros = torch.zeros(
-            heatmap.shape[0], 1, spatial_size[0], spatial_size[1]
-        ).type(heatmap.type()).to(heatmap.device)
+            heatmap.shape[0], 1, spatial_size[0], spatial_size[1],
+            dtype=heatmap.dtype, device=heatmap.device
+        )
         heatmap = torch.cat([zeros, heatmap], dim=1)
         return heatmap
 
@@ -132,8 +133,8 @@ class DenseMotionNetwork(nn.Module):
         driving_to_source = trans.transform_frame(source_image)
 
         identity_grid = make_coordinate_grid(
-            (h, w), type=kp_1.type()
-        ).to(kp_1.device)
+            (h, w), dtype=kp_1.dtype, device=kp_1.device
+        )
         identity_grid = identity_grid.view(1, 1, h, w, 2)
         identity_grid = identity_grid.repeat(bs, 1, 1, 1, 1)
 
@@ -174,9 +175,9 @@ class DenseMotionNetwork(nn.Module):
         Dropout for TPS transformations.
         Eq(7) and Eq(8) in the paper.
         """
-        drop = (torch.rand(X.shape[0], X.shape[1]) < (1 - P)).type(
-            X.type()
-        ).to(X.device)
+        drop = (torch.rand(X.shape[0], X.shape[1]) < (1 - P)).to(
+            dtype=X.dtype, device=X.device
+        )
         drop[..., 0] = 1
         drop = drop.repeat(
             X.shape[2], X.shape[3], 1, 1

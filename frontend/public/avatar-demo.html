@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign Language Avatar — 3D Demo</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #080810;
+            color: #e0e0ff;
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            overflow: hidden;
+            height: 100vh;
+        }
+
+        #ui {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 10;
+            padding: 14px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: linear-gradient(180deg, rgba(8, 8, 16, 0.95) 60%, transparent);
+        }
+
+        #ui h1 {
+            font-size: 18px;
+            font-weight: 600;
+            background: linear-gradient(135deg, #60a5fa, #a78bfa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        #sign-label {
+            font-size: 30px;
+            font-weight: 700;
+            color: #fff;
+            background: rgba(59, 130, 246, 0.18);
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            padding: 6px 32px;
+            border-radius: 12px;
+            min-width: 150px;
+            text-align: center;
+            backdrop-filter: blur(12px);
+            transition: all 0.3s;
+            letter-spacing: 2px;
+        }
+
+        #controls {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            z-index: 10;
+            padding: 14px 24px;
+            background: linear-gradient(0deg, rgba(8, 8, 16, 0.95) 60%, transparent);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 14px;
+        }
+
+        .btn {
+            background: rgba(59, 130, 246, 0.1);
+            border: 1px solid rgba(59, 130, 246, 0.2);
+            color: #a0b0d0;
+            padding: 9px 18px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+
+        .btn:hover {
+            background: rgba(59, 130, 246, 0.2);
+            color: #fff;
+        }
+
+        .btn.active {
+            background: rgba(59, 130, 246, 0.3);
+            border-color: #60a5fa;
+            color: #fff;
+        }
+
+        #progress-bar {
+            position: fixed;
+            bottom: 62px;
+            left: 24px;
+            right: 24px;
+            height: 3px;
+            background: rgba(255, 255, 255, 0.06);
+            border-radius: 2px;
+            z-index: 10;
+        }
+
+        #progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #3b82f6, #a78bfa);
+            border-radius: 2px;
+            transition: width 0.08s linear;
+            width: 0%;
+        }
+
+        #loading {
+            position: fixed;
+            inset: 0;
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: #080810;
+        }
+
+        #loading h2 {
+            font-size: 20px;
+            color: #60a5fa;
+            margin-bottom: 12px;
+        }
+
+        #loading .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid rgba(96, 165, 250, 0.2);
+            border-top-color: #60a5fa;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+        }
+
+        #info {
+            position: fixed;
+            top: 52px;
+            right: 24px;
+            font-size: 11px;
+            opacity: 0.35;
+            z-index: 10;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="loading">
+        <div class="spinner"></div>
+        <h2>Loading 3D Avatar...</h2>
+    </div>
+
+    <div id="ui" style="display:none">
+        <h1>🤟 Sign Language Avatar</h1>
+        <div id="sign-label">READY</div>
+    </div>
+    <div id="info" style="display:none"></div>
+    <div id="progress-bar" style="display:none">
+        <div id="progress-fill"></div>
+    </div>
+
+    <div id="controls" style="display:none">
+        <button class="btn" id="btn-restart">⏮ Restart</button>
+        <button class="btn active" id="btn-play">▶ Play</button>
+        <button class="btn" id="btn-speed">1× Speed</button>
+    </div>
+
+    <div id="canvas-container"></div>
+
+    <script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.164.1/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.164.1/examples/jsm/"
+  }
+}
+</script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        // ═══════════════════════════════════════════════════════════════════
+        // SCENE SETUP
+        // ═══════════════════════════════════════════════════════════════════
+
+        const container = document.getElementById('canvas-container');
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.1;
+        renderer.outputColorSpace = THREE.SRGBColorSpace;
+        container.appendChild(renderer.domElement);
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0a0a18);
+
+        const camera = new THREE.PerspectiveCamera(32, window.innerWidth / window.innerHeight, 0.1, 100);
+        camera.position.set(0, 1.1, 4.0);
+
+        const orbitControls = new OrbitControls(camera, renderer.domElement);
+        orbitControls.target.set(0, 0.9, 0);
+        orbitControls.enableDamping = true;
+        orbitControls.dampingFactor = 0.05;
+        orbitControls.minDistance = 2.0;
+        orbitControls.maxDistance = 7;
+        orbitControls.maxPolarAngle = Math.PI * 0.65;
+        orbitControls.update();
+
+        // ═══════════════════════════════════════════════════════════════════
+        // LIGHTING — cinematic 3-point
+        // ═══════════════════════════════════════════════════════════════════
+
+        scene.add(new THREE.AmbientLight(0x404060, 0.6));
+
+        // Key
+        const keyLight = new THREE.SpotLight(0xe8f0ff, 50);
+        keyLight.position.set(2, 4, 3);
+        keyLight.angle = Math.PI / 5;
+        keyLight.penumbra = 0.6;
+        keyLight.castShadow = true;
+        keyLight.shadow.mapSize.set(2048, 2048);
+        scene.add(keyLight);
+
+        // Fill
+        const fillLight = new THREE.PointLight(0x6080cc, 10);
+        fillLight.position.set(-3, 2, 1);
+        scene.add(fillLight);
+
+        // Rim
+        const rimLight = new THREE.PointLight(0x8090ff, 15);
+        rimLight.position.set(0, 1.5, -3);
+        scene.add(rimLight);
+
+        // Under glow
+        const underGlow = new THREE.PointLight(0x3060c0, 5);
+        underGlow.position.set(0, 0.02, 0.5);
+        scene.add(underGlow);
+
+        // Floor
+        const floorMat = new THREE.MeshStandardMaterial({ color: 0x0a0a18, roughness: 0.15, metalness: 0.8 });
+        const floor = new THREE.Mesh(new THREE.PlaneGeometry(10, 10), floorMat);
+        floor.rotation.x = -Math.PI / 2;
+        floor.receiveShadow = true;
+        scene.add(floor);
+
+        // Glow ring
+        const ringGeo = new THREE.RingGeometry(0.25, 0.5, 64);
+        const ringMat = new THREE.MeshBasicMaterial({ color: 0x3b82f6, transparent: true, opacity: 0.05, side: THREE.DoubleSide });
+        const glowRing = new THREE.Mesh(ringGeo, ringMat);
+        glowRing.rotation.x = -Math.PI / 2;
+        glowRing.position.y = 0.005;
+        scene.add(glowRing);
+
+
+        // ═══════════════════════════════════════════════════════════════════
+        // LOAD 3D HUMAN MODEL
+        // ═══════════════════════════════════════════════════════════════════
+
+        const loader = new GLTFLoader();
+        let bones = {};
+        let model = null;
+
+        // Bone name mapping for the Wolf3D model
+        const BONE_NAMES = {
+            hips: 'Hips',
+            spine: 'Spine', spine1: 'Spine1', spine2: 'Spine2',
+            neck: 'Neck', head: 'Head',
+            leftShoulder: 'LeftShoulder', leftArm: 'LeftArm', leftForeArm: 'LeftForeArm', leftHand: 'LeftHand',
+            rightShoulder: 'RightShoulder', rightArm: 'RightArm', rightForeArm: 'RightForeArm', rightHand: 'RightHand',
+            leftUpLeg: 'LeftUpLeg', leftLeg: 'LeftLeg', leftFoot: 'LeftFoot',
+            rightUpLeg: 'RightUpLeg', rightLeg: 'RightLeg', rightFoot: 'RightFoot',
+            // Fingers
+            leftThumb1: 'LeftHandThumb1', leftThumb2: 'LeftHandThumb2', leftThumb3: 'LeftHandThumb3',
+            leftIndex1: 'LeftHandIndex1', leftIndex2: 'LeftHandIndex2', leftIndex3: 'LeftHandIndex3',
+            leftMiddle1: 'LeftHandMiddle1', leftMiddle2: 'LeftHandMiddle2', leftMiddle3: 'LeftHandMiddle3',
+            leftRing1: 'LeftHandRing1', leftRing2: 'LeftHandRing2', leftRing3: 'LeftHandRing3',
+            leftPinky1: 'LeftHandPinky1', leftPinky2: 'LeftHandPinky2', leftPinky3: 'LeftHandPinky3',
+            rightThumb1: 'RightHandThumb1', rightThumb2: 'RightHandThumb2', rightThumb3: 'RightHandThumb3',
+            rightIndex1: 'RightHandIndex1', rightIndex2: 'RightHandIndex2', rightIndex3: 'RightHandIndex3',
+            rightMiddle1: 'RightHandMiddle1', rightMiddle2: 'RightHandMiddle2', rightMiddle3: 'RightHandMiddle3',
+            rightRing1: 'RightHandRing1', rightRing2: 'RightHandRing2', rightRing3: 'RightHandRing3',
+            rightPinky1: 'RightHandPinky1', rightPinky2: 'RightHandPinky2', rightPinky3: 'RightHandPinky3',
+        };
+
+        function loadModel() {
+            return new Promise((resolve, reject) => {
+                // Try human.glb first, fallback to Soldier.glb
+                loader.load('./models/human.glb', (gltf) => {
+                    model = gltf.scene;
+                    model.traverse((child) => {
+                        if (child.isMesh) {
+                            child.castShadow = true;
+                            child.receiveShadow = true;
+                            // Enhance materials
+                            if (child.material) {
+                                child.material.needsUpdate = true;
+                            }
+                        }
+                        if (child.isBone) {
+                            bones[child.name] = child;
+                        }
+                    });
+
+                    scene.add(model);
+
+                    console.log('Model loaded. Bones found:', Object.keys(bones).length);
+                    console.log('Bone names:', Object.keys(bones).join(', '));
+
+                    resolve(gltf);
+                }, undefined, (err) => {
+                    console.error('Failed to load model:', err);
+                    reject(err);
+                });
+            });
+        }
+
+
+        // ═══════════════════════════════════════════════════════════════════
+        // SIGN LANGUAGE POSES — using bone rotations
+        // ═══════════════════════════════════════════════════════════════════
+
+        // Store initial (rest) bone rotations
+        const restPose = {};
+
+        function saveRestPose() {
+            for (const [key, boneName] of Object.entries(BONE_NAMES)) {
+                const bone = bones[boneName];
+                if (bone) {
+                    restPose[key] = bone.rotation.clone();
+                }
+            }
+        }
+
+        // Pose definition: { boneName: [x, y, z] euler rotation offsets from rest }
+        function createPose(overrides) {
+            const p = {};
+            for (const key of Object.keys(BONE_NAMES)) {
+                p[key] = [0, 0, 0]; // Default: no change from rest
+            }
+            for (const [key, val] of Object.entries(overrides)) {
+                p[key] = val;
+            }
+            return p;
+        }
+
+        // ── REST ──
+        const REST = createPose({});
+
+        // ── HELLO — right arm raised high, waving ──
+        const HELLO_1 = createPose({
+            rightShoulder: [0, 0, 0.3],
+            rightArm: [-0.2, 0.3, -2.6],       // arm raises high
+            rightForeArm: [0.5, 0.2, -0.5],    // forearm bends
+            rightHand: [0, 0.2, 0.5],
+            // Spread fingers open
+            rightThumb1: [0, 0.4, 0.4],
+            rightIndex1: [-0.1, 0, -0.15],
+            rightMiddle1: [0, 0, 0],
+            rightRing1: [0.05, 0, 0.1],
+            rightPinky1: [0.1, 0, 0.25],
+        });
+
+        const HELLO_2 = createPose({
+            rightShoulder: [0, 0, 0.3],
+            rightArm: [-0.2, -0.3, -2.6],
+            rightForeArm: [0.5, -0.2, 0.5],    // wave: forearm tilts other direction
+            rightHand: [0, -0.2, -0.5],
+            rightThumb1: [0, 0.4, 0.4],
+            rightIndex1: [-0.1, 0, -0.15],
+            rightMiddle1: [0, 0, 0],
+            rightRing1: [0.05, 0, 0.1],
+            rightPinky1: [0.1, 0, 0.25],
+        });
+
+        // ── HOW — both hands out, palms up, curling ──
+        const HOW_1 = createPose({
+            leftShoulder: [0, 0, -0.2],
+            leftArm: [0.5, -0.2, 1.2],
+            leftForeArm: [0.3, 1.0, 0.2],
+            leftHand: [-0.6, 0, 0.2],
+            // Curl fingers
+            leftIndex1: [0.8, 0, 0], leftIndex2: [0.6, 0, 0],
+            leftMiddle1: [0.8, 0, 0], leftMiddle2: [0.6, 0, 0],
+            leftRing1: [0.8, 0, 0], leftRing2: [0.6, 0, 0],
+            leftPinky1: [0.8, 0, 0], leftPinky2: [0.6, 0, 0],
+
+            rightShoulder: [0, 0, 0.2],
+            rightArm: [0.5, 0.2, -1.2],
+            rightForeArm: [0.3, -1.0, -0.2],
+            rightHand: [-0.6, 0, -0.2],
+            rightIndex1: [0.8, 0, 0], rightIndex2: [0.6, 0, 0],
+            rightMiddle1: [0.8, 0, 0], rightMiddle2: [0.6, 0, 0],
+            rightRing1: [0.8, 0, 0], rightRing2: [0.6, 0, 0],
+            rightPinky1: [0.8, 0, 0], rightPinky2: [0.6, 0, 0],
+        });
+
+        const HOW_2 = createPose({
+            leftShoulder: [0, 0, -0.2],
+            leftArm: [0.4, -0.2, 1.4],
+            leftForeArm: [0.2, 0.8, 0.1],
+            leftHand: [-0.3, 0.4, 0.1],
+            leftIndex1: [0.2, 0, 0], leftMiddle1: [0.2, 0, 0],
+            leftRing1: [0.2, 0, 0], leftPinky1: [0.2, 0, 0],
+
+            rightShoulder: [0, 0, 0.2],
+            rightArm: [0.4, 0.2, -1.4],
+            rightForeArm: [0.2, -0.8, -0.1],
+            rightHand: [-0.3, -0.4, -0.1],
+            rightIndex1: [0.2, 0, 0], rightMiddle1: [0.2, 0, 0],
+            rightRing1: [0.2, 0, 0], rightPinky1: [0.2, 0, 0],
+        });
+
+        // ── ARE — right hand from chin, moves forward ──
+        const ARE_1 = createPose({
+            rightShoulder: [0, 0, 0.15],
+            rightArm: [0.4, 0.2, -1.6],
+            rightForeArm: [0.2, -1.6, -0.2],
+            rightHand: [-0.4, 0, 0.1],
+            rightIndex1: [0.4, 0, 0], rightMiddle1: [0.4, 0, 0],
+            rightRing1: [0.6, 0, 0], rightPinky1: [0.7, 0, 0],
+        });
+
+        const ARE_2 = createPose({
+            rightShoulder: [0, 0, 0.15],
+            rightArm: [0.6, 0.3, -1.3],
+            rightForeArm: [0.3, -1.0, -0.3],
+            rightHand: [-0.3, 0, 0.1],
+            rightIndex1: [0.4, 0, 0], rightMiddle1: [0.4, 0, 0],
+            rightRing1: [0.6, 0, 0], rightPinky1: [0.7, 0, 0],
+        });
+
+        // ── YOU — pointing forward with index finger ──
+        const YOU_POINT = createPose({
+            rightShoulder: [0, 0, 0.15],
+            rightArm: [0.7, 0.3, -1.3],
+            rightForeArm: [0.3, -0.8, -0.2],
+            rightHand: [-0.5, 0, 0.1],
+            // Point: index extended straight, all others tightly curled
+            rightIndex1: [0, 0, 0],
+            rightMiddle1: [1.4, 0, 0], rightMiddle2: [1.0, 0, 0], rightMiddle3: [0.5, 0, 0],
+            rightRing1: [1.4, 0, 0], rightRing2: [1.0, 0, 0], rightRing3: [0.5, 0, 0],
+            rightPinky1: [1.4, 0, 0], rightPinky2: [1.0, 0, 0], rightPinky3: [0.5, 0, 0],
+            rightThumb1: [0.3, 0.6, 0.6],
+        });
+
+
+        // ═══════════════════════════════════════════════════════════════════
+        // TIMELINE
+        // ═══════════════════════════════════════════════════════════════════
+
+        const signSequence = [
+            {
+                label: 'HELLO', transitions: [
+                    { from: REST, to: HELLO_1, dur: 0.4 },
+                    { from: HELLO_1, to: HELLO_2, dur: 0.25 },
+                    { from: HELLO_2, to: HELLO_1, dur: 0.25 },
+                    { from: HELLO_1, to: HELLO_2, dur: 0.25 },
+                    { from: HELLO_2, to: REST, dur: 0.4 },
+                ]
+            },
+            {
+                label: 'HOW', transitions: [
+                    { from: REST, to: HOW_1, dur: 0.4 },
+                    { from: HOW_1, to: HOW_2, dur: 0.4 },
+                    { from: HOW_2, to: HOW_1, dur: 0.35 },
+                    { from: HOW_1, to: REST, dur: 0.4 },
+                ]
+            },
+            {
+                label: 'ARE', transitions: [
+                    { from: REST, to: ARE_1, dur: 0.35 },
+                    { from: ARE_1, to: ARE_2, dur: 0.5 },
+                    { from: ARE_2, to: REST, dur: 0.4 },
+                ]
+            },
+            {
+                label: 'YOU', transitions: [
+                    { from: REST, to: YOU_POINT, dur: 0.4 },
+                    { from: YOU_POINT, to: YOU_POINT, dur: 0.6 },
+                    { from: YOU_POINT, to: REST, dur: 0.4 },
+                ]
+            },
+        ];
+
+        const timeline = [];
+        let totalDuration = 0;
+        for (const sign of signSequence) {
+            for (const tr of sign.transitions) {
+                timeline.push({ label: sign.label, from: tr.from, to: tr.to, start: totalDuration, dur: tr.dur });
+                totalDuration += tr.dur;
+            }
+            timeline.push({ label: '—', from: REST, to: REST, start: totalDuration, dur: 0.3 });
+            totalDuration += 0.3;
+        }
+
+
+        // ═══════════════════════════════════════════════════════════════════
+        // POSE APPLICATION
+        // ═══════════════════════════════════════════════════════════════════
+
+        function ease(t) {
+            return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+        }
+
+        function applyPoseBlend(from, to, t) {
+            t = ease(Math.max(0, Math.min(1, t)));
+
+            for (const [key, boneName] of Object.entries(BONE_NAMES)) {
+                const bone = bones[boneName];
+                if (!bone || !restPose[key]) continue;
+
+                const fromOff = from[key] || [0, 0, 0];
+                const toOff = to[key] || [0, 0, 0];
+
+                // Interpolate offset
+                const ox = fromOff[0] + (toOff[0] - fromOff[0]) * t;
+                const oy = fromOff[1] + (toOff[1] - fromOff[1]) * t;
+                const oz = fromOff[2] + (toOff[2] - fromOff[2]) * t;
+
+                // Apply: rest rotation + offset
+                bone.rotation.x = restPose[key].x + ox;
+                bone.rotation.y = restPose[key].y + oy;
+                bone.rotation.z = restPose[key].z + oz;
+            }
+        }
+
+
+        // ═══════════════════════════════════════════════════════════════════
+        // PLAYBACK
+        // ═══════════════════════════════════════════════════════════════════
+
+        let isPlaying = false;
+        let playbackTime = 0;
+        let speedMul = 1;
+        const signLabel = document.getElementById('sign-label');
+        const progressFill = document.getElementById('progress-fill');
+        const infoEl = document.getElementById('info');
+
+        function getFrame(t) {
+            for (const f of timeline) {
+                if (t >= f.start && t < f.start + f.dur) {
+                    const local = (t - f.start) / f.dur;
+                    return { from: f.from, to: f.to, t: local, label: f.label, progress: t / totalDuration };
+                }
+            }
+            return { from: REST, to: REST, t: 0, label: '✓ DONE', progress: 1 };
+        }
+
+
+        // ═══════════════════════════════════════════════════════════════════
+        // RENDER LOOP
+        // ═══════════════════════════════════════════════════════════════════
+
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const dt = clock.getDelta();
+            orbitControls.update();
+
+            if (isPlaying) {
+                playbackTime += dt * speedMul;
+                if (playbackTime >= totalDuration) playbackTime = 0;
+            }
+
+            if (model) {
+                const frame = getFrame(playbackTime);
+                applyPoseBlend(frame.from, frame.to, frame.t);
+                signLabel.textContent = frame.label;
+                progressFill.style.width = `${frame.progress * 100}%`;
+                infoEl.textContent = `${playbackTime.toFixed(1)}s / ${totalDuration.toFixed(1)}s`;
+            }
+
+            // Subtle glow pulse
+            glowRing.material.opacity = 0.04 + Math.sin(clock.elapsedTime * 2) * 0.01;
+
+            renderer.render(scene, camera);
+        }
+
+        animate();
+
+
+        // ═══════════════════════════════════════════════════════════════════
+        // INIT
+        // ═══════════════════════════════════════════════════════════════════
+
+        loadModel().then(() => {
+            saveRestPose();
+            applyPoseBlend(REST, REST, 0);
+
+            // Show UI
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('ui').style.display = 'flex';
+            document.getElementById('controls').style.display = 'flex';
+            document.getElementById('progress-bar').style.display = 'block';
+            document.getElementById('info').style.display = 'block';
+
+            // Auto-play after a beat
+            setTimeout(() => {
+                isPlaying = true;
+                document.getElementById('btn-play').textContent = '⏸ Pause';
+                document.getElementById('btn-play').classList.add('active');
+            }, 800);
+
+        }).catch(err => {
+            document.getElementById('loading').innerHTML =
+                `<h2 style="color:#f87171">❌ Failed to load model</h2><p style="opacity:0.5">${err.message}</p>`;
+        });
+
+
+        // ═══════════════════════════════════════════════════════════════════
+        // UI CONTROLS
+        // ═══════════════════════════════════════════════════════════════════
+
+        document.getElementById('btn-play').addEventListener('click', () => {
+            isPlaying = !isPlaying;
+            const btn = document.getElementById('btn-play');
+            btn.textContent = isPlaying ? '⏸ Pause' : '▶ Play';
+            btn.classList.toggle('active', isPlaying);
+        });
+
+        document.getElementById('btn-restart').addEventListener('click', () => {
+            playbackTime = 0;
+            isPlaying = true;
+            const btn = document.getElementById('btn-play');
+            btn.textContent = '⏸ Pause';
+            btn.classList.add('active');
+        });
+
+        const speeds = [0.5, 1, 1.5, 2];
+        let speedIdx = 1;
+        document.getElementById('btn-speed').addEventListener('click', () => {
+            speedIdx = (speedIdx + 1) % speeds.length;
+            speedMul = speeds[speedIdx];
+            document.getElementById('btn-speed').textContent = `${speeds[speedIdx]}× Speed`;
+        });
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+    </script>
+</body>
+
+</html>

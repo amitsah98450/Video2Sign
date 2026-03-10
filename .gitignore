@@ -36,3 +36,5 @@ Thumbs.db
 *.ckpt
 *.h5
 *.pkl
+*.pth.tar
+ml/model/checkpoints/
